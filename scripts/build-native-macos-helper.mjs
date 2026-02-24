@@ -73,10 +73,13 @@ for (const helper of helpers) {
     '-o', helper.outputPath,
   ];
 
+  const buildEnv = { ...process.env, MACOSX_DEPLOYMENT_TARGET: '13.0' };
+
   console.log(`[native-helper] compiling ${helper.label}...`);
   const result = spawnSync('xcrun', args, {
     cwd: projectRoot,
     stdio: 'inherit',
+    env: buildEnv,
   });
 
   if (result.status !== 0) {
@@ -104,11 +107,58 @@ for (const helper of helpers) {
   ], {
     cwd: projectRoot,
     stdio: 'inherit',
+    env: buildEnv,
   });
 
   if (signResult.status !== 0) {
     console.error(`[native-helper] codesign failed for ${helper.outputPath}`);
     process.exit(signResult.status ?? 1);
+  }
+
+  // Verify the deployment target is set to 13.0 (Darwin 22.0) in the built binary.
+  const vtoolResult = spawnSync('vtool', ['-show', helper.outputPath], {
+    cwd: projectRoot,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  if (vtoolResult.status === 0) {
+    const vtoolOutput = String(vtoolResult.stdout);
+    const minosMatch = /minos\s+(\d+)\.(\d+)/.exec(vtoolOutput);
+    if (minosMatch) {
+      const minosMajor = Number(minosMatch[1]);
+      const minosMinor = Number(minosMatch[2]);
+      if (minosMajor !== 13 || minosMinor !== 0) {
+        console.error(`[native-helper] deployment target mismatch for ${helper.outputPath}: expected minos 13.0, got ${minosMajor}.${minosMinor}`);
+        process.exit(1);
+      }
+      console.log(`[native-helper] verified deployment target: minos ${minosMajor}.${minosMinor}`);
+    } else {
+      console.warn(`[native-helper] could not parse minos from vtool output for ${helper.outputPath}, skipping verification`);
+    }
+  } else {
+    // vtool not available, fall back to otool
+    const otoolResult = spawnSync('otool', ['-l', helper.outputPath], {
+      cwd: projectRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    if (otoolResult.status === 0) {
+      const otoolOutput = String(otoolResult.stdout);
+      const minosMatch = /minos\s+(\d+)\.(\d+)/.exec(otoolOutput);
+      if (minosMatch) {
+        const minosMajor = Number(minosMatch[1]);
+        const minosMinor = Number(minosMatch[2]);
+        if (minosMajor !== 13 || minosMinor !== 0) {
+          console.error(`[native-helper] deployment target mismatch for ${helper.outputPath}: expected minos 13.0, got ${minosMajor}.${minosMinor}`);
+          process.exit(1);
+        }
+        console.log(`[native-helper] verified deployment target: minos ${minosMajor}.${minosMinor}`);
+      } else {
+        console.warn(`[native-helper] could not parse minos from otool output for ${helper.outputPath}, skipping verification`);
+      }
+    } else {
+      console.warn(`[native-helper] neither vtool nor otool available, skipping deployment target verification`);
+    }
   }
 
   console.log(`[native-helper] built ${helper.outputPath}`);

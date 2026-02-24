@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 
 export type NativeCursorMode = 'always' | 'never'
@@ -196,6 +197,7 @@ async function ensureHelperBinary(): Promise<string> {
     ], {
       cwd: projectRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, MACOSX_DEPLOYMENT_TARGET: '13.0' },
     })
 
     let stderr = ''
@@ -262,6 +264,17 @@ export async function startNativeMacRecorder(options: NativeRecorderStartOptions
 }> {
   if (process.platform !== 'darwin') {
     return { success: false, message: 'Native ScreenCaptureKit recorder is only supported on macOS.' }
+  }
+
+  // Darwin kernel 22.x = macOS 13 Ventura. The native helper requires macOS >= 13.0.
+  const darwinMajor = Number(os.release().split('.')[0])
+  if (Number.isFinite(darwinMajor) && darwinMajor < 22) {
+    const inferredMacOS = darwinMajor - 9 // rough mapping: Darwin 22 = macOS 13, 21 = 12, etc.
+    return {
+      success: false,
+      code: 'os_version_unsupported',
+      message: `macOS 13.0 (Ventura) or later is required for native screen recording, but this system appears to be macOS ${inferredMacOS}. Please upgrade macOS or use the built-in recorder instead.`,
+    }
   }
 
   clearStaleActiveSession()

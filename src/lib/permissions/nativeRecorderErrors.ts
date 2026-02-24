@@ -56,6 +56,8 @@ export function resolveNativeRecorderStartFailureMessage(
   const isWindowSource = typeof input.sourceId === "string" && input.sourceId.startsWith("window:");
 
   switch (input.code) {
+    case "os_version_unsupported":
+      return fallbackMessage ?? "macOS 13.0 (Ventura) or later is required for native screen recording. Please upgrade macOS or use the built-in recorder instead.";
     case "permission_denied":
       return SCREEN_RECORDING_PERMISSION_GUIDANCE;
     case "microphone_permission_denied":
